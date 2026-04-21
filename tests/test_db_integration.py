@@ -7,6 +7,7 @@ They verify the whole stack: validate_identifier → SQL → real DB response.
 """
 import pytest
 from db.read        import fetch_all_rows, get_row_count, get_column_types, get_rows
+
 from db.upload      import add_row
 from db.edit        import update_value
 from db.delete      import delete_row
@@ -70,16 +71,18 @@ class TestBulkInsert:
         clear_table(db_url, test_table)
         headers = ["name", "score"]
         rows    = [["Bob", "95"], ["Carol", "87"], ["Dave", "72"]]
-        count   = bulk_insert(db_url, test_table, headers, rows)
-        assert count == 3
+        result  = bulk_insert(db_url, test_table, headers, rows)
+        assert result["inserted"] == 3
+        assert result["skipped"]  == 0
         assert fresh_count(db_url, test_table) == 3
 
     def test_skips_blank_rows(self, db_url, test_table):
         clear_table(db_url, test_table)
         headers = ["name", "score"]
         rows    = [["Eve", "88"], ["", ""], ["Frank", "91"]]
-        count   = bulk_insert(db_url, test_table, headers, rows)
-        assert count == 2
+        result  = bulk_insert(db_url, test_table, headers, rows)
+        assert result["inserted"] == 2
+        assert result["skipped"]  == 1
         assert fresh_count(db_url, test_table) == 2
 
     def test_strips_pk_column(self, db_url, test_table):
@@ -87,12 +90,23 @@ class TestBulkInsert:
         clear_table(db_url, test_table)
         headers = ["id", "name", "score"]
         rows    = [["999", "Grace", "80"]]
-        count   = bulk_insert(db_url, test_table, headers, rows, pk_col="id")
-        assert count == 1
+        result  = bulk_insert(db_url, test_table, headers, rows, pk_col="id")
+        assert result["inserted"] == 1
         inserted = all_rows(db_url, test_table)
         # DB assigned its own id — not the 999 we tried to force
         assert inserted[0]["id"] != 999
         assert inserted[0]["name"] == "Grace"
+
+    def test_rollback_on_failure(self, db_url, test_table):
+        """A bad row mid-upload must roll back all rows, not leave a partial insert."""
+        clear_table(db_url, test_table)
+        headers = ["name", "score"]
+        # Third row has a non-integer score — will fail the INTEGER column constraint
+        rows = [["Harry", "85"], ["Iris", "90"], ["Bad", "not_a_number"]]
+        with pytest.raises(RuntimeError, match="Row 3 failed"):
+            bulk_insert(db_url, test_table, headers, rows)
+        # Transaction rolled back — table must still be empty
+        assert fresh_count(db_url, test_table) == 0
 
 
 # ── Pagination ────────────────────────────────────────────────────────────────

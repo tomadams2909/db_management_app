@@ -31,14 +31,15 @@ def bulk_insert(
     headers: list[str],
     rows: list[list],
     pk_col: str = "id",
-) -> int:
+) -> dict:
     """
-    Insert rows into table. Returns inserted count.
-    Strips the pk_col from headers/rows before inserting so the DB
-    can auto-assign it — prevents duplicate key errors on upload.
+    Insert rows into table inside a single transaction — all rows commit or all roll back.
+    Strips pk_col so the DB auto-assigns it.
+    Returns {"inserted": int, "skipped": int, "attempted": int}.
+    Raises RuntimeError with the offending row number on any DB failure.
     """
     if not rows:
-        return 0
+        return {"inserted": 0, "skipped": 0, "attempted": 0}
 
     # Strip PK column from headers and all rows if present
     if pk_col and pk_col in headers:
@@ -50,18 +51,28 @@ def bulk_insert(
         ]
 
     engine = get_engine(db_conn_string)
-    safe_table = validate_identifier(table)
+    safe_table   = validate_identifier(table)
     safe_headers = [validate_identifier(h) for h in headers]
-    cols = ", ".join(f'"{h}"' for h in safe_headers)
-    params = ", ".join(f":col_{i}" for i in range(len(safe_headers)))
-    query = text(f'INSERT INTO "{safe_table}" ({cols}) VALUES ({params})')
+    cols         = ", ".join(f'"{h}"' for h in safe_headers)
+    params       = ", ".join(f":col_{i}" for i in range(len(safe_headers)))
+    query        = text(f'INSERT INTO "{safe_table}" ({cols}) VALUES ({params})')
 
     inserted = 0
+    skipped  = 0
+
+    # engine.begin() is a single transaction — any exception rolls back all inserts
     with engine.begin() as conn:
-        for row in rows:
+        for row_num, row in enumerate(rows, start=1):
             if all(v == "" or v is None for v in row):
-                continue  # skip blank rows
+                skipped += 1
+                continue
             row_dict = {f"col_{i}": (v if v != "" else None) for i, v in enumerate(row)}
-            conn.execute(query, row_dict)
-            inserted += 1
-    return inserted
+            try:
+                conn.execute(query, row_dict)
+                inserted += 1
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Row {row_num} failed — transaction rolled back. Reason: {exc}"
+                ) from exc
+
+    return {"inserted": inserted, "skipped": skipped, "attempted": inserted + skipped}

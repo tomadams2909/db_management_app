@@ -236,7 +236,7 @@ class DatabaseAPI:
         return parse_upload_file(file_bytes, filename)
 
     def bulk_insert(self, database: Database, table: str, headers: list[str],
-                    rows: list[list], pk_col: str = "id") -> int:
+                    rows: list[list], pk_col: str = "id") -> dict:
         result = bulk_insert(database.url, table, headers, rows, pk_col=pk_col)
         self._post_write_cache(database, table)
         return result

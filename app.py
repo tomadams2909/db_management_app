@@ -308,9 +308,13 @@ def upload_confirm(db_name, table):
         headers = json.loads(base64.b64decode(request.form["headers_b64"]).decode())
         rows    = json.loads(base64.b64decode(request.form["rows_b64"]).decode())
         pk_col  = session.get(f"pk_col_{db_name}_{table}", "id")
-        inserted = db_api.bulk_insert(database=database, table=table,
-                                      headers=headers, rows=rows, pk_col=pk_col)
-        msg, msg_type = f"✅ {inserted} rows inserted successfully", "ok"
+        result = db_api.bulk_insert(database=database, table=table,
+                                     headers=headers, rows=rows, pk_col=pk_col)
+        msg, msg_type = (
+            f"✅ {result['inserted']} rows inserted"
+            + (f", {result['skipped']} blank rows skipped" if result['skipped'] else ""),
+            "ok",
+        )
     except Exception as e:
         msg, msg_type = f"❌ Upload failed: {e}", "err"
 
