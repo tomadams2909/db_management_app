@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: testdb
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      LOCAL_DB_URL: postgresql://admin:admin123@db:5432/testdb
+      FLASK_SECRET_KEY: change-me-in-production
+      API_TOKEN: change-me-in-production
+    depends_on:
+      db:
+        condition: service_healthy
