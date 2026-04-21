@@ -32,15 +32,25 @@ _API_TOKEN = get_env("API_TOKEN")
 
 
 def require_auth(f):
-    """Protect a route with Bearer token auth. Returns 401 if token is missing or wrong."""
+    """Protect a route with session auth (browser) or Bearer token (API clients)."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        if session.get("authenticated"):
+            return f(*args, **kwargs)
         auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer ") or auth[len("Bearer "):] != _API_TOKEN:
-            logger.warning("Unauthorised request to %s from %s", request.path, request.remote_addr)
+        if auth.startswith("Bearer ") and auth[len("Bearer "):] == _API_TOKEN:
+            return f(*args, **kwargs)
+        logger.warning("Unauthorised request to %s from %s", request.path, request.remote_addr)
+        # API clients get JSON 401; browser requests get redirected to login
+        if request.headers.get("Authorization") or request.content_type == "application/json":
             return jsonify({"error": "Unauthorised"}), 401
-        return f(*args, **kwargs)
+        return redirect(url_for("login", next=request.full_path))
     return decorated
+
+
+@app.context_processor
+def inject_auth():
+    return {"logged_in": session.get("authenticated", False)}
 
 
 # ── Request logging middleware ────────────────────────────────────────────────
@@ -559,6 +569,31 @@ def ops_execute_sql():
     return render_template("operations.html", db_names=dbs, selected_db=db_name,
                            sql_result=result, sql_error=error, sql_query=sql,
                            open_card="execute-sql")
+
+
+# ── Auth ─────────────────────────────────────────────────────────────────────
+
+@app.route("/login", methods=["GET", "POST"])
+@limiter.limit("10 per minute")
+def login():
+    if session.get("authenticated"):
+        return redirect(url_for("browse"))
+    error = None
+    if request.method == "POST":
+        token = request.form.get("token", "").strip()
+        if token == _API_TOKEN:
+            session["authenticated"] = True
+            next_url = request.form.get("next") or url_for("browse")
+            return redirect(next_url)
+        error = "Incorrect token. Check your API_TOKEN in .env."
+        logger.warning("Failed login attempt from %s", request.remote_addr)
+    return render_template("login.html", error=error, next=request.args.get("next", ""))
+
+
+@app.route("/logout")
+def logout():
+    session.pop("authenticated", None)
+    return redirect(url_for("login"))
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

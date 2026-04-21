@@ -11,6 +11,11 @@
     <div class="nav-links">
         <a href="/browse" class="nav-link">Browse</a>
         <a href="/operations" class="nav-link active">Operations</a>
+        {% if logged_in %}
+            <a href="/logout" class="nav-link nav-link-auth">Log out</a>
+        {% else %}
+            <a href="/login" class="nav-link nav-link-auth">Log in</a>
+        {% endif %}
     </div>
 </nav>
 

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Log in – DB Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="navbar">
+    <span class="nav-brand">🗄️ DB Manager</span>
+</nav>
+
+<div class="login-wrapper">
+    <div class="login-card">
+        <h1 class="login-title">Log in</h1>
+        <p class="login-subtitle">Enter your API token to access write operations.</p>
+
+        {% if error %}
+            <div class="alert alert-error" style="margin-bottom:16px;">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="/login">
+            <input type="hidden" name="next" value="{{ next }}">
+            <div class="login-field">
+                <label class="login-label">API Token</label>
+                <input
+                    type="password"
+                    name="token"
+                    class="text-input login-input"
+                    placeholder="Enter your API_TOKEN"
+                    autofocus
+                    autocomplete="current-password"
+                >
+            </div>
+            <button type="submit" class="btn btn-primary login-btn">Log in</button>
+        </form>
+
+        <p class="login-hint">
+            The token is set in your <code>.env</code> file as <code>API_TOKEN</code>.
+        </p>
+    </div>
+</div>
+</body>
+</html>
