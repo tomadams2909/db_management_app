@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_DB: testdb
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      LOCAL_DB_URL: postgresql://admin:admin123@127.0.0.1:5433/testdb
+      INSURANCE_DB_URL: postgresql://admin:admin123@127.0.0.1:5433/testdb
+      FLASK_SECRET_KEY: ci-test-secret-key
+      API_TOKEN: ci-test-token
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: pytest tests/test_validate_identifier.py tests/test_sql_injection_blocked.py -v
+
+      - name: Run integration tests
+        run: pytest tests/test_db_integration.py -v -m integration
