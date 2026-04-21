@@ -539,6 +539,25 @@ def ops_execute_sql():
                            open_card="execute-sql")
 
 
+# ── Health check ─────────────────────────────────────────────────────────────
+
+@app.route("/health")
+def health():
+    from sqlalchemy import text
+    from db.utils import get_engine
+    statuses = {}
+    for db in Database:
+        try:
+            with get_engine(db.url).connect() as conn:
+                conn.execute(text("SELECT 1"))
+            statuses[db.name] = "ok"
+        except Exception as e:
+            statuses[db.name] = f"unreachable: {e}"
+
+    all_ok = all(v == "ok" for v in statuses.values())
+    return jsonify({"status": "ok" if all_ok else "degraded", "databases": statuses}), 200 if all_ok else 503
+
+
 # ── Error handlers ────────────────────────────────────────────────────────────
 
 @app.errorhandler(413)
