@@ -1,0 +1,53 @@
+Folder PATH listing for volume Windows-SSD
+Volume serial number is F2E1-2082
+C:.
+|   .env
+|   .gitignore
+|   api.py
+|   app.py
+|   structure.txt
+|   
+|   |   .gitignore
+|   |   pyvenv.cfg
+|           
++---config
+|   |   databases.py
+|   |   settings.py
+|   |   __init__.py
+|   |   
+|           databases.cpython-313.pyc
+|           settings.cpython-313.pyc
+|           __init__.cpython-313.pyc
+|           
++---db
+|   |   create.py
+|   |   delete.py
+|   |   edit.py
+|   |   upload.py
+|   |   utils.py
+|   |   __init__.py
+|   |   
+|           delete.cpython-313.pyc
+|           edit.cpython-313.pyc
+|           upload.cpython-313.pyc
+|           utils.cpython-313.pyc
+|           __init__.cpython-313.pyc
+|           
++---style
+|       style.css
+|       
++---templates
+|       index.html
+|       
++---ui
+|   |   prompts.py
+|   |   __init__.py
+|   |   
+|           gui_runner.cpython-313.pyc
+|           prompts.cpython-313.pyc
+|           runner.cpython-313.pyc
+|           __init__.cpython-313.pyc
+|           
+        api.cpython-313.pyc
+        ui.cpython-313.pyc
+        

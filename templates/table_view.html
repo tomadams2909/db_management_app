@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ table }} – DB Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="navbar">
+    <span class="nav-brand">🗄️ DB Manager</span>
+    <div class="nav-links">
+        <a href="/browse?database={{ selected_db }}" class="nav-link active">Browse</a>
+        <a href="/operations" class="nav-link">Operations</a>
+    </div>
+</nav>
+
+<div class="container">
+    <!-- Sidebar: always shows full table list, active table highlighted -->
+    <div class="sidebar">
+        <h3 class="sidebar-title">Database</h3>
+        <form method="get" action="/browse">
+            <select name="database" class="select-input" onchange="this.form.submit()">
+                {% for db in db_names %}
+                    <option value="{{ db }}" {% if db == selected_db %}selected{% endif %}>{{ db }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        <h3 class="sidebar-title" style="margin-top:24px;">Tables</h3>
+        <ul class="table-list">
+            {% for t in tables %}
+                <li><a href="/browse/{{ selected_db }}/{{ t }}"
+                       class="table-link {% if t == table %}active{% endif %}">{{ t }}</a></li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="main">
+        <!-- PK selector -->
+        <div class="pk-selector-bar">
+            <label class="pk-label">🔑 Primary Key Column:</label>
+            <select id="pk-col-select" class="select-input" style="width:auto;">
+                <option value="">— none selected —</option>
+                {% for col in all_col_names %}
+                    <option value="{{ col }}" {% if col == pk_col %}selected{% endif %}>{{ col }}</option>
+                {% endfor %}
+            </select>
+            {% if not pk_col %}
+                <span class="pk-warning">⚠ Select a primary key column to enable edit, delete and download</span>
+            {% endif %}
+        </div>
+        {% if flash_msg %}
+            <div class="alert alert-{{ flash_type }} alert-dismissible">
+                {{ flash_msg }}
+                <button onclick="this.parentElement.remove()" style="float:right;background:none;border:none;cursor:pointer;font-size:16px;">×</button>
+            </div>
+        {% endif %}
+
+        <div class="table-header">
+            <h2 class="table-title">{{ table }}</h2>
+            {% if data %}
+                <span class="row-count">
+                    {% if data.total == 0 %}No rows
+                    {% elif data.is_large %}{{ data.total }} total rows
+                    {% else %}Rows {{ (data.page - 1) * data.page_size + 1 }}–{{ [data.page * data.page_size, data.total] | min }} of {{ data.total }}
+                    {% endif %}
+                    {% if data.is_cached %}
+                        <span class="cache-badge">⚡ Cached {{ data.cached_at }}</span>
+                    {% elif data.is_large %}
+                        <span class="cache-badge live">🌐 Live</span>
+                    {% endif %}
+                </span>
+            {% endif %}
+            <div class="table-actions">
+                <button class="btn btn-sm btn-success" onclick="showAddRow()">+ Add Row</button>
+                <a href="/api/refresh-cache/{{ selected_db }}/{{ table }}" class="btn btn-sm btn-ghost">🔄 Refresh</a>
+                <div class="export-dropdown">
+                    <button class="btn btn-sm btn-ghost" onclick="toggleExport(event)">⬇ Export ▾</button>
+                    <div class="export-menu" id="export-menu" style="display:none;">
+                        {% if data and data.total > excel_limit %}
+                            <div class="export-warning">⚠️ {{ data.total }} rows — Excel limit is ~1,048,576. Use CSV for full export.</div>
+                        {% endif %}
+                        <a href="/export/{{ selected_db }}/{{ table }}/csv" class="export-option">📄 Export as CSV</a>
+                        <a href="/export/{{ selected_db }}/{{ table }}/excel" class="export-option {% if data and data.total > excel_limit %}export-option-warn{% endif %}">
+                            📊 Export as Excel{% if data and data.total > excel_limit %} ⚠️{% endif %}
+                        </a>
+                    </div>
+                </div>
+                <!-- Upload: plain label wrapping hidden input, no JS click handler needed -->
+                <label class="btn btn-sm btn-ghost" style="cursor:pointer;">
+                    ⬆ Upload
+                    <form id="upload-form" method="post" action="/upload/{{ selected_db }}/{{ table }}"
+                          enctype="multipart/form-data" style="display:none;">
+                        <input type="file" name="upload_file" id="upload-file-input"
+                               accept=".csv,.xlsx,.xls"
+                               onchange="document.getElementById('upload-form').submit()">
+                    </form>
+                </label>
+            </div>
+        </div>
+
+        {% if error %}
+            <div class="alert alert-error">{{ error }}</div>
+        {% endif %}
+
+        <!-- Filter bar -->
+        <form method="get" action="/browse/{{ selected_db }}/{{ table }}" class="filter-bar">
+            <input type="hidden" name="sort_col" value="{{ sort_col or '' }}">
+            <input type="hidden" name="sort_dir" value="{{ sort_dir or 'asc' }}">
+            <select name="filter_col" class="select-input filter-select">
+                <option value="">— filter column —</option>
+                {% if data and data.columns %}
+                    {% for col in data.columns %}
+                        {% if col not in (data.bytea_cols or []) %}
+                            <option value="{{ col }}" {% if filter_col == col %}selected{% endif %}>{{ col }}</option>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </select>
+            <input type="text" name="filter_val" class="text-input filter-input"
+                   placeholder="Search value…" value="{{ filter_val or '' }}">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            {% if filter_col or filter_val %}
+                <a href="/browse/{{ selected_db }}/{{ table }}?sort_col={{ sort_col or '' }}&sort_dir={{ sort_dir or 'asc' }}" class="btn btn-ghost">Clear</a>
+            {% endif %}
+            {% if sort_col %}
+                <span class="sort-badge">Sorted by <strong>{{ sort_col }}</strong> {{ '↑' if sort_dir == 'asc' else '↓' }}
+                    <a href="/browse/{{ selected_db }}/{{ table }}?filter_col={{ filter_col or '' }}&filter_val={{ filter_val or '' }}" style="color:inherit;margin-left:4px;">×</a>
+                </span>
+            {% endif %}
+        </form>
+
+        <!-- Add Row panel -->
+        {% if table_cols %}
+        <div id="add-row-panel" style="display:none;" class="add-row-panel">
+            <div class="add-row-header">
+                <span class="add-row-title">➕ New Row</span>
+                <button class="btn btn-sm btn-ghost" onclick="hideAddRow()">Cancel</button>
+            </div>
+            <form method="post" action="/add-row">
+                <input type="hidden" name="database" value="{{ selected_db }}">
+                <input type="hidden" name="table" value="{{ table }}">
+                <input type="hidden" name="redirect_db" value="{{ selected_db }}">
+                <input type="hidden" name="redirect_table" value="{{ table }}">
+                <input type="hidden" name="redirect_page" value="{{ data.page if data else 1 }}">
+                <div class="add-row-fields">
+                    {% for col in table_cols if not (col.column_name == 'id' and col.column_default and 'nextval' in col.column_default) %}
+                        <div class="add-row-field">
+                            <label class="add-row-label">
+                                {{ col.column_name }}
+                                <span class="type-hint">{{ col.data_type }}{% if col.is_nullable == 'YES' %} · optional{% endif %}</span>
+                            </label>
+                            <input type="text" name="{{ col.column_name }}" class="text-input"
+                                   {% if col.is_nullable == 'NO' %}required{% endif %}>
+                        </div>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="btn btn-success" style="margin-top:12px;">Save Row</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <!-- Data table -->
+        {% if data and data.rows %}
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        {% for col in data.columns %}
+                            {% set is_sorted = (sort_col == col) %}
+                            {% set next_dir = 'desc' if (is_sorted and sort_dir == 'asc') else 'asc' %}
+                            <th class="sortable-th {% if is_sorted %}sorted{% endif %}"
+                                onclick="sortBy('{{ col }}', '{{ next_dir }}')">
+                                {{ col }}<span class="sort-icon">{% if is_sorted %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% else %}⇅{% endif %}</span>
+                            </th>
+                        {% endfor %}
+                        <th class="actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data.rows %}
+                    <tr>
+                        {% for col in data.columns %}
+                            {% if col in (data.bytea_cols or []) %}
+                                <td class="cell" data-col="{{ col }}"
+                                    data-row-id="{{ row.get(pk_col, '') if pk_col else '' }}"
+                                    data-original="__blob__">
+                                    {% if pk_col %}
+                                        <a href="/api/blob/{{ selected_db }}/{{ table }}/{{ pk_col }}/{{ row.get(pk_col, '') }}/{{ col }}"
+                                        class="btn btn-sm btn-ghost">⬇ Download</a>
+                                    {% else %}
+                                        <span class="muted">[binary]</span>
+                                    {% endif %}
+                                </td>
+                            {% else %}
+                                <td class="cell" data-col="{{ col }}"
+                                    data-row-id="{{ row.get(pk_col, '') if pk_col else '' }}"
+                                    data-original="{{ row[col] if row[col] is not none else '' }}">
+                                    <span class="cell-value">{{ row[col] if row[col] is not none else '' }}</span>
+                                    <input class="cell-edit-input" type="text"
+                                        value="{{ row[col] if row[col] is not none else '' }}"
+                                        style="display:none;">
+                                </td>
+                            {% endif %}
+                        {% endfor %}
+                        <td class="actions-cell">
+                            {% if pk_col %}
+                                <button class="btn btn-sm btn-edit" onclick="startEdit(this)">Edit</button>
+                                <button class="btn btn-sm btn-save" onclick="saveEdit(this)" style="display:none;">Save</button>
+                                <button class="btn btn-sm btn-cancel" onclick="cancelEdit(this)" style="display:none;">Cancel</button>
+                                <button class="btn btn-sm btn-danger"
+                                        onclick="confirmDelete('{{ selected_db }}','{{ table }}','{{ row.get(pk_col, '') }}')">Delete</button>
+                            {% else %}
+                                <button class="btn btn-sm btn-edit" disabled title="Select a primary key column first">Edit</button>
+                                <button class="btn btn-sm btn-danger" disabled title="Select a primary key column first">Delete</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% if data.is_large %}
+            <!-- Keyset pagination: Prev / Next only -->
+            <div class="pagination">
+                {% if data.first_pk %}
+                    <a href="?direction=prev&last_pk_val={{ data.first_pk }}&filter_col={{ filter_col or '' }}&filter_val={{ filter_val or '' }}&sort_col={{ sort_col or '' }}&sort_dir={{ sort_dir or 'asc' }}"
+                    class="btn btn-ghost">← Prev</a>
+                {% endif %}
+                {% if data.has_more %}
+                    <a href="?direction=next&last_pk_val={{ data.last_pk }}&filter_col={{ filter_col or '' }}&filter_val={{ filter_val or '' }}&sort_col={{ sort_col or '' }}&sort_dir={{ sort_dir or 'asc' }}"
+                    class="btn btn-ghost">Next →</a>
+                {% endif %}
+            </div>
+        {% else %}
+            <!-- Standard numbered pagination for cached tables -->
+            {% if data.total_pages > 1 %}
+            <div class="pagination">
+                {% if data.page > 1 %}
+                    <a href="?page={{ data.page-1 }}&filter_col={{ filter_col or '' }}&filter_val={{ filter_val or '' }}&sort_col={{ sort_col or '' }}&sort_dir={{ sort_dir or 'asc' }}" class="btn btn-ghost">← Prev</a>
+                {% endif %}
+                {% for p in range([1, data.page-2]|max, [data.total_pages+1, data.page+3]|min) %}
+                    <a href="?page={{ p }}&filter_col={{ filter_col or '' }}&filter_val={{ filter_val or '' }}&sort_col={{ sort_col or '' }}&sort_dir={{ sort_dir or 'asc' }}"
+                    class="btn {% if p == data.page %}btn-primary{% else %}btn-ghost{% endif %}">{{ p }}</a>
+                {% endfor %}
+                {% if data.page < data.total_pages %}
+                    <a href="?page={{ data.page+1 }}&filter_col={{ filter_col or '' }}&filter_val={{ filter_val or '' }}&sort_col={{ sort_col or '' }}&sort_dir={{ sort_dir or 'asc' }}" class="btn btn-ghost">Next →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        {% endif %}
+
+        {% elif data and data.total == 0 %}
+            <p class="muted" style="margin-top:32px;">No rows match your filter.</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Delete modal -->
+<div id="delete-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+        <h3>🗑️ Delete row?</h3>
+        <p>Permanently delete row <strong id="delete-row-id"></strong> from <strong id="delete-table-name"></strong>. This cannot be undone.</p>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-danger" onclick="executeDelete()">Yes, delete</button>
+        </div>
+    </div>
+</div>
+
+<form id="delete-form" method="post" action="/delete-row" style="display:none;">
+    <input type="hidden" name="database" id="delete-db-input">
+    <input type="hidden" name="table" id="delete-table-input">
+    <input type="hidden" name="row_id" id="delete-id-input">
+    <input type="hidden" name="redirect_db" value="{{ selected_db }}">
+    <input type="hidden" name="redirect_table" value="{{ table }}">
+    <input type="hidden" name="redirect_page" value="{{ data.page if data else 1 }}">
+</form>
+
+<form id="edit-form" method="post" action="/update-value" style="display:none;">
+    <input type="hidden" name="database" value="{{ selected_db }}">
+    <input type="hidden" name="table" value="{{ table }}">
+    <input type="hidden" name="row_id" id="edit-row-id-input">
+    <input type="hidden" name="column" id="edit-column-input">
+    <input type="hidden" name="new_value" id="edit-value-input">
+    <input type="hidden" name="redirect_db" value="{{ selected_db }}">
+    <input type="hidden" name="redirect_table" value="{{ table }}">
+    <input type="hidden" name="redirect_page" value="{{ data.page if data else 1 }}">
+    <input type="hidden" name="filter_col" value="{{ filter_col or '' }}">
+    <input type="hidden" name="filter_val" value="{{ filter_val or '' }}">
+    <input type="hidden" name="sort_col" value="{{ sort_col or '' }}">
+    <input type="hidden" name="sort_dir" value="{{ sort_dir or 'asc' }}">
+</form>
+
+<script>
+function sortBy(col, dir) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('sort_col', col);
+    url.searchParams.set('sort_dir', dir);
+    url.searchParams.set('page', 1);
+    window.location.href = url.toString();
+}
+function showAddRow() {
+    document.getElementById('add-row-panel').style.display = 'block';
+    document.getElementById('add-row-panel').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function hideAddRow() { document.getElementById('add-row-panel').style.display = 'none'; }
+function toggleExport(e) {
+    e.stopPropagation();
+    const m = document.getElementById('export-menu');
+    m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', () => {
+    const m = document.getElementById('export-menu');
+    if (m) m.style.display = 'none';
+});
+function startEdit(btn) {
+    const row = btn.closest('tr');
+    row.querySelectorAll('.cell').forEach(c => {
+        const val = c.querySelector('.cell-value');
+        const inp = c.querySelector('.cell-edit-input');
+        if (val) val.style.display = 'none';
+        if (inp) inp.style.display = 'inline-block';
+    });
+    btn.style.display = 'none';
+    row.querySelector('.btn-save').style.display = 'inline-block';
+    row.querySelector('.btn-cancel').style.display = 'inline-block';
+    row.querySelector('.btn-danger').style.display = 'none';
+}
+function cancelEdit(btn) {
+    const row = btn.closest('tr');
+    row.querySelectorAll('.cell').forEach(c => {
+        const val = c.querySelector('.cell-value');
+        const inp = c.querySelector('.cell-edit-input');
+        if (inp) inp.value = c.dataset.original;
+        if (val) val.style.display = '';
+        if (inp) inp.style.display = 'none';
+    });
+    row.querySelector('.btn-edit').style.display = 'inline-block';
+    row.querySelector('.btn-save').style.display = 'none';
+    btn.style.display = 'none';
+    row.querySelector('.btn-danger').style.display = 'inline-block';
+}
+function saveEdit(btn) {
+    const row = btn.closest('tr');
+    const rowId = row.querySelector('.cell').dataset.rowId;
+    let changed = [];
+    row.querySelectorAll('.cell').forEach(c => {
+        const v = c.querySelector('.cell-edit-input').value;
+        if (v !== c.dataset.original) changed.push({col: c.dataset.col, val: v});
+    });
+    if (!changed.length) { cancelEdit(btn); return; }
+    document.getElementById('edit-row-id-input').value = rowId;
+    document.getElementById('edit-column-input').value = changed[0].col;
+    document.getElementById('edit-value-input').value = changed[0].val;
+    document.getElementById('edit-form').submit();
+}
+function confirmDelete(db, table, rowId) {
+    document.getElementById('delete-row-id').textContent = rowId;
+    document.getElementById('delete-table-name').textContent = table;
+    document.getElementById('delete-db-input').value = db;
+    document.getElementById('delete-table-input').value = table;
+    document.getElementById('delete-id-input').value = rowId;
+    document.getElementById('delete-modal').style.display = 'flex';
+}
+function executeDelete() { document.getElementById('delete-form').submit(); }
+function closeModal() { document.getElementById('delete-modal').style.display = 'none'; }
+document.getElementById('delete-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+// PK column selector
+document.getElementById('pk-col-select').addEventListener('change', function() {
+    const pkCol = this.value;
+    fetch(`/api/set-pk/{{ selected_db }}/{{ table }}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({pk_col: pkCol})
+    }).then(() => window.location.reload());
+});
+const wrapper = document.querySelector('.table-wrapper');
+const scrollKey = 'scroll_{{ selected_db }}_{{ table }}';
+
+// Restore
+if (wrapper) {
+    requestAnimationFrame(() => {
+        const saved = sessionStorage.getItem(scrollKey);
+        if (saved) wrapper.scrollLeft = parseInt(saved);
+    });
+
+    // Save on scroll
+    wrapper.addEventListener('scroll', () => {
+        sessionStorage.setItem(scrollKey, wrapper.scrollLeft);
+    });
+}
+</script>
+</body>
+</html>

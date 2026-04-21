@@ -1,0 +1,113 @@
+================================================================================
+  DOCKER POSTGRESQL REFERENCE
+================================================================================
+
+  PROJECT: sql_app / local-pg
+  Port:    5433  (5432 is occupied by a standalone Windows PostgreSQL install)
+  User:    admin
+  Pass:    admin123
+  DB:      testdb
+
+================================================================================
+  DAILY COMMANDS
+================================================================================
+
+  Start the database (run this after every PC restart)
+  -----------------------------------------------------
+  docker start local-pg
+
+  Stop the database
+  -----------------
+  docker stop local-pg
+
+  Check if it's running
+  ---------------------
+  docker ps
+
+  Open a SQL shell inside the container
+  --------------------------------------
+  docker exec -it local-pg psql -U admin -d testdb
+  (type \q to exit the SQL shell)
+
+  Nuclear option — deletes the container and ALL data
+  ----------------------------------------------------
+  docker stop local-pg
+  docker rm local-pg
+  (see CREATING A NEW DATABASE below to recreate it)
+
+================================================================================
+  .ENV CONNECTION STRING
+================================================================================
+
+  LOCAL_DB_URL=postgresql://admin:admin123@127.0.0.1:5433/testdb
+
+  NOTE: Use 127.0.0.1 not localhost — on Windows, localhost can resolve to
+  IPv6 (::1) which causes connection failures.
+
+================================================================================
+  CREATING A NEW DATABASE
+================================================================================
+
+  Template command:
+  -----------------
+  docker run --name <container-name> \
+             -e POSTGRES_USER=<username> \
+             -e POSTGRES_PASSWORD=<password> \
+             -e POSTGRES_DB=<database-name> \
+             -p <your-port>:5432 \
+             -d postgres
+
+  What each part means:
+  ---------------------
+  --name          The name you give the container — used in start/stop/exec
+  POSTGRES_USER   The username to log in with
+  POSTGRES_PASSWORD  The password for that user
+  POSTGRES_DB     The name of the default database created on startup
+  -p XXXX:5432    Left = port on YOUR machine, Right = always 5432 (inside container)
+  -d postgres     Run detached (background) using the official PostgreSQL image
+
+  Current project setup:
+  ----------------------
+  docker run --name local-pg \
+             -e POSTGRES_USER=admin \
+             -e POSTGRES_PASSWORD=admin123 \
+             -e POSTGRES_DB=testdb \
+             -p 5433:5432 \
+             -d postgres
+
+  Second database example (different name + port):
+  -------------------------------------------------
+  docker run --name project-two \
+             -e POSTGRES_USER=dev \
+             -e POSTGRES_PASSWORD=mypassword \
+             -e POSTGRES_DB=projectdb \
+             -p 5434:5432 \
+             -d postgres
+
+  Corresponding .env entry:
+  -------------------------
+  PROJECT_TWO_URL=postgresql://dev:mypassword@127.0.0.1:5434/projectdb
+
+  THE GOLDEN RULE: every container running at the same time needs a unique
+  port on the LEFT side of -p. The right side is always 5432.
+
+  Port convention to avoid conflicts:
+  ------------------------------------
+  5432  — taken by Windows standalone PostgreSQL install (do not use)
+  5433  — local-pg (this project)
+  5434  — next project, and so on
+
+================================================================================
+  DATA PERSISTENCE
+================================================================================
+
+  SAFE   — docker stop / PC restart    Data is preserved, just run docker start
+  DANGER — docker rm                   Container AND data are permanently deleted
+
+  Note: data is stored inside the container in Docker's internal storage at
+  C:\Users\<you>\AppData\Local\Docker — you don't need to manage this directly.
+
+  For production databases a Docker Volume would be used to store data
+  separately from the container, but for local dev this setup is fine.
+
+================================================================================

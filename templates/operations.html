@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Operations – DB Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+<nav class="navbar">
+    <span class="nav-brand"><i data-lucide="database"></i> DB Manager</span>
+    <div class="nav-links">
+        <a href="/browse" class="nav-link">Browse</a>
+        <a href="/operations" class="nav-link active">Operations</a>
+    </div>
+</nav>
+
+<div class="ops-layout">
+    <div class="ops-sidebar">
+        <h3 class="sidebar-title">Database</h3>
+        <select id="global-db" class="select-input" style="width:100%;margin-bottom:20px;" onchange="switchDb(this.value)">
+            {% for db in db_names %}
+                <option value="{{ db }}" {% if db == selected_db %}selected{% endif %}>{{ db }}</option>
+            {% endfor %}
+        </select>
+        <h3 class="sidebar-title">Categories</h3>
+        <ul class="ops-nav">
+            <li><a href="#section-tables" class="ops-nav-link"><i data-lucide="table"></i> Table Functions</a></li>
+            <li><a href="#section-columns" class="ops-nav-link"><i data-lucide="columns"></i> Column Functions</a></li>
+            <li><a href="#section-data" class="ops-nav-link"><i data-lucide="database"></i> Data Functions</a></li>
+            <li><a href="#section-sql" class="ops-nav-link"><i data-lucide="terminal"></i> Execute SQL</a></li>
+        </ul>
+    </div>
+
+    <div class="ops-main">
+        {% set msg = request.args.get('msg') %}
+        {% if msg %}
+            <div class="alert alert-{{ request.args.get('msg_type', 'ok') }} alert-dismissible" style="margin-bottom:20px;">
+                {{ msg }}
+                <button onclick="this.parentElement.remove()" style="float:right;background:none;border:none;cursor:pointer;font-size:16px;">×</button>
+            </div>
+        {% endif %}
+
+        <!-- ── TABLE MANAGEMENT ──────────────────────────────────────────── -->
+        <div class="ops-section" id="section-tables">
+            <h2 class="ops-section-title"><i data-lucide="table"></i> Table Functions</h2>
+            <div class="ops-cards">
+
+                <!-- Create Table -->
+                <div class="ops-card {% if open_card == 'create-table' %}ops-card-open{% endif %}" onclick="toggleCard('create-table')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-blue"><i data-lucide="plus"></i></div>
+                        <div>
+                            <div class="ops-card-title">Create Table</div>
+                            <div class="ops-card-desc">Define a new table with custom columns</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-create-table">{% if open_card == 'create-table' %}▾{% else %}▸{% endif %}</span>
+                    </div>
+                    <div class="ops-card-body" id="body-create-table" style="display:{% if open_card == 'create-table' %}block{% else %}none{% endif %};" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/create-table">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table Name</label>
+                                <input type="text" name="table_name" class="text-input" placeholder="e.g. invoices" required>
+                            </div>
+
+                            <!-- Primary Key -->
+                            <div class="field-group">
+                                <label>Primary Key</label>
+                                <div class="pk-options">
+                                    <label class="radio-label">
+                                        <input type="radio" name="pk_mode" value="serial" checked onchange="updatePkFields()">
+                                        <span><strong>SERIAL</strong> <span class="type-hint">— id SERIAL PRIMARY KEY (auto-increment int)</span></span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="pk_mode" value="uuid" onchange="updatePkFields()">
+                                        <span><strong>UUID</strong> <span class="type-hint">— id UUID DEFAULT gen_random_uuid()</span></span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="pk_mode" value="custom" onchange="updatePkFields()">
+                                        <span><strong>Custom</strong> <span class="type-hint">— choose your own name and type</span></span>
+                                    </label>
+                                    <label class="radio-label">
+                                        <input type="radio" name="pk_mode" value="none" onchange="updatePkFields()">
+                                        <span><strong>None</strong> <span class="type-hint">— no primary key column</span></span>
+                                    </label>
+                                </div>
+                                <div id="pk-custom-fields" style="display:none; margin-top:8px;">
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                        <input type="text" name="pk_custom_name" class="text-input" placeholder="Column name (e.g. pk)" style="flex:1;min-width:120px;">
+                                        <input type="text" name="pk_custom_type" class="text-input" placeholder="Type (e.g. BIGSERIAL)" style="flex:1;min-width:120px;">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Columns -->
+                            <div class="field-group">
+                                <label>Columns</label>
+                                <div id="col-rows">
+                                    <div class="col-row">
+                                        <input type="text" name="col_name" class="text-input" placeholder="Column name" required>
+                                        <span data-type-select data-name="col_type" data-id="ct-0"></span>
+                                        <label class="checkbox-label"><input type="checkbox" name="col_nullable" value="0" checked> Nullable</label>
+                                        <button type="button" class="btn btn-sm btn-ghost" onclick="removeColRow(this)"><i data-lucide="x"></i></button>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-ghost" style="margin-top:8px;" onclick="addColRow()"><i data-lucide="plus"></i> Add Column</button>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Create Table</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Drop Table -->
+                <div class="ops-card ops-card-danger" onclick="toggleCard('drop-table')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-red"><i data-lucide="trash-2"></i></div>
+                        <div>
+                            <div class="ops-card-title">Drop Table</div>
+                            <div class="ops-card-desc">Permanently delete a table and all its data</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-drop-table">▸</span>
+                    </div>
+                    <div class="ops-card-body" id="body-drop-table" style="display:none;" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/drop-table">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table</label>
+                                <select name="table" class="select-input table-select" required>
+                                    <option value="">— select table —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>Type table name to confirm</label>
+                                <input type="text" name="confirm_name" class="text-input" placeholder="Confirm table name" required>
+                            </div>
+                            <div class="danger-notice"><i data-lucide="alert-triangle"></i> This permanently deletes the table and all its data.</div>
+                            <button type="submit" class="btn btn-danger">Drop Table</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── COLUMN MANAGEMENT ─────────────────────────────────────────── -->
+        <div class="ops-section" id="section-columns">
+            <h2 class="ops-section-title"><i data-lucide="columns"></i> Column Functions</h2>
+            <div class="ops-cards">
+
+                <!-- Add Column -->
+                <div class="ops-card" onclick="toggleCard('add-col')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-blue"><i data-lucide="plus"></i></div>
+                        <div>
+                            <div class="ops-card-title">Add Column</div>
+                            <div class="ops-card-desc">Add a new column to an existing table</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-add-col">▸</span>
+                    </div>
+                    <div class="ops-card-body" id="body-add-col" style="display:none;" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/add-column">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table</label>
+                                <select name="table" class="select-input table-select" required>
+                                    <option value="">— select table —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>Column Name</label>
+                                <input type="text" name="column_name" class="text-input" placeholder="e.g. phone_number" required>
+                            </div>
+                            <div class="field-group">
+                                <label>Column Type</label>
+                                <span data-type-select data-name="column_type" data-id="ac-type"></span>
+                            </div>
+                            <div class="field-group">
+                                <label class="checkbox-label"><input type="checkbox" name="nullable" value="yes" checked> Allow NULL values</label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Add Column</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Drop Column -->
+                <div class="ops-card ops-card-danger" onclick="toggleCard('drop-col')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-red"><i data-lucide="x"></i></div>
+                        <div>
+                            <div class="ops-card-title">Drop Column</div>
+                            <div class="ops-card-desc">Remove a column from a table</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-drop-col">▸</span>
+                    </div>
+                    <div class="ops-card-body" id="body-drop-col" style="display:none;" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/drop-column">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table</label>
+                                <select name="table" class="select-input table-select" onchange="loadColumns(this,'drop-col-column')" required>
+                                    <option value="">— select table —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>Column</label>
+                                <select name="column" id="drop-col-column" class="select-input" required>
+                                    <option value="">— select table first —</option>
+                                </select>
+                            </div>
+                            <div class="danger-notice"><i data-lucide="alert-triangle"></i> This permanently removes the column and all its data.</div>
+                            <button type="submit" class="btn btn-danger">Drop Column</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Rename Column -->
+                <div class="ops-card" onclick="toggleCard('rename-col')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-yellow"><i data-lucide="edit-3"></i></div>
+                        <div>
+                            <div class="ops-card-title">Rename Column</div>
+                            <div class="ops-card-desc">Give a column a new name</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-rename-col">▸</span>
+                    </div>
+                    <div class="ops-card-body" id="body-rename-col" style="display:none;" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/rename-column">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table</label>
+                                <select name="table" class="select-input table-select" onchange="loadColumns(this,'rename-col-column')" required>
+                                    <option value="">— select table —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>Column to Rename</label>
+                                <select name="old_column" id="rename-col-column" class="select-input" required>
+                                    <option value="">— select table first —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>New Name</label>
+                                <input type="text" name="new_column_name" class="text-input" placeholder="e.g. full_name" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Rename Column</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Change Column Type -->
+                <div class="ops-card" onclick="toggleCard('change-type')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-yellow"><i data-lucide="refresh-cw"></i></div>
+                        <div>
+                            <div class="ops-card-title">Change Column Type</div>
+                            <div class="ops-card-desc">Cast a column to a different data type</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-change-type">▸</span>
+                    </div>
+                    <div class="ops-card-body" id="body-change-type" style="display:none;" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/change-column-type">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table</label>
+                                <select name="table" class="select-input table-select" onchange="loadColumns(this,'change-type-column')" required>
+                                    <option value="">— select table —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>Column</label>
+                                <select name="column" id="change-type-column" class="select-input" required>
+                                    <option value="">— select table first —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>New Type</label>
+                                <span data-type-select data-name="new_type" data-id="ct-type"></span>
+                            </div>
+                            <div class="danger-notice"><i data-lucide="alert-triangle"></i> Changing type may fail if existing data cannot be cast. Test on non-production first.</div>
+                            <button type="submit" class="btn btn-primary">Change Type</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── DATA MANAGEMENT ───────────────────────────────────────────── -->
+        <div class="ops-section" id="section-data">
+            <h2 class="ops-section-title"><i data-lucide="database"></i> Data Functions</h2>
+            <div class="ops-cards">
+
+                <!-- Clear Table -->
+                <div class="ops-card ops-card-danger" onclick="toggleCard('clear-table')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-orange"><i data-lucide="eraser"></i></div>
+                        <div>
+                            <div class="ops-card-title">Clear Table</div>
+                            <div class="ops-card-desc">Delete all rows but keep the table structure</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-clear-table">▸</span>
+                    </div>
+                    <div class="ops-card-body" id="body-clear-table" style="display:none;" onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/clear-table">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>Table</label>
+                                <select name="table" class="select-input table-select" required>
+                                    <option value="">— select table —</option>
+                                </select>
+                            </div>
+                            <div class="field-group">
+                                <label>Type table name to confirm</label>
+                                <input type="text" name="confirm_name" class="text-input" placeholder="Confirm table name" required>
+                            </div>
+                            <div class="danger-notice"><i data-lucide="alert-triangle"></i> All rows will be deleted. The table schema is preserved.</div>
+                            <button type="submit" class="btn btn-danger">Clear All Rows</button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ── EXECUTE SQL ────────────────────────────────────────────────── -->
+        <div class="ops-section" id="section-sql">
+            <h2 class="ops-section-title"><i data-lucide="terminal"></i> Execute SQL</h2>
+            <div class="ops-cards ops-cards-full">
+
+                <div class="ops-card {% if open_card == 'execute-sql' %}ops-card-open{% endif %}" onclick="toggleCard('execute-sql')">
+                    <div class="ops-card-header">
+                        <div class="ops-card-icon ops-icon-purple"><i data-lucide="terminal"></i></div>
+                        <div>
+                            <div class="ops-card-title">Raw SQL</div>
+                            <div class="ops-card-desc">Execute any SQL statement directly against the database</div>
+                        </div>
+                        <span class="ops-card-chevron" id="chevron-execute-sql">{% if open_card == 'execute-sql' %}▾{% else %}▸{% endif %}</span>
+                    </div>
+                    <div class="ops-card-body" id="body-execute-sql"
+                         style="display:{% if open_card == 'execute-sql' %}block{% else %}none{% endif %};"
+                         onclick="event.stopPropagation()">
+                        <form method="post" action="/ops/execute-sql">
+                            <input type="hidden" name="database" class="db-field" value="{{ selected_db }}">
+                            <div class="field-group">
+                                <label>SQL Statement</label>
+                                <textarea name="sql" class="sql-textarea" placeholder="SELECT * FROM customers LIMIT 10;" spellcheck="false">{{ sql_query or '' }}</textarea>
+                            </div>
+                            <div class="danger-notice"><i data-lucide="alert-triangle"></i> Runs directly on the database with no undo. Double-check before executing.</div>
+                            <button type="submit" class="btn btn-primary"><i data-lucide="play"></i> Run SQL</button>
+                        </form>
+
+                        {% if sql_error %}
+                            <div class="alert alert-err" style="margin-top:16px;"><i data-lucide="x-circle"></i> {{ sql_error }}</div>
+                        {% endif %}
+
+                        {% if sql_result is not none %}
+                            <div class="sql-result-bar">
+                                {% if sql_result.is_select %}
+                                    <span class="sql-result-label">{{ sql_result.rows | length }} row{{ 's' if sql_result.rows | length != 1 else '' }} returned</span>
+                                {% else %}
+                                    <span class="sql-result-label ok"><i data-lucide="check-circle"></i> {{ sql_result.rowcount }} row{{ 's' if sql_result.rowcount != 1 else '' }} affected</span>
+                                {% endif %}
+                            </div>
+                            {% if sql_result.is_select and sql_result.rows %}
+                                <div class="table-wrapper" style="margin-top:8px;max-height:400px;overflow:auto;">
+                                    <table class="data-table">
+                                        <thead>
+                                            <tr>{% for col in sql_result.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for row in sql_result.rows %}
+                                            <tr>{% for col in sql_result.columns %}<td>{{ row[col] if row[col] is not none else '' }}</td>{% endfor %}</tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% elif sql_result.is_select %}
+                                <p class="muted" style="margin-top:12px;">Query returned no rows.</p>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+const SELECTED_DB = "{{ selected_db }}";
+
+function switchDb(db) { window.location.href = '/operations?database=' + db; }
+
+function toggleCard(id) {
+    const body = document.getElementById('body-' + id);
+    const chevron = document.getElementById('chevron-' + id);
+    const isOpen = body.style.display !== 'none';
+    document.querySelectorAll('.ops-card-body').forEach(b => b.style.display = 'none');
+    document.querySelectorAll('.ops-card-chevron').forEach(c => c.textContent = '▸');
+    document.querySelectorAll('.ops-card').forEach(c => c.classList.remove('ops-card-open'));
+    if (!isOpen) {
+        body.style.display = 'block';
+        chevron.textContent = '▾';
+        body.closest('.ops-card').classList.add('ops-card-open');
+    }
+    refreshIcons();
+}
+
+// ── Primary key options ───────────────────────────────────────────────────────
+function updatePkFields() {
+    const mode = document.querySelector('input[name="pk_mode"]:checked')?.value;
+    const custom = document.getElementById('pk-custom-fields');
+    if (custom) custom.style.display = mode === 'custom' ? 'block' : 'none';
+}
+
+// ── Column type select with "Other" free-text ─────────────────────────────────
+const TYPE_OPTIONS = ['TEXT','VARCHAR(255)','INTEGER','BIGINT','NUMERIC(10,2)','BOOLEAN','DATE','TIMESTAMP','Other…'];
+
+function makeTypeSelect(selectName, inputId) {
+    return `<div class="type-select-wrap">
+        <select name="${selectName}" class="select-input type-select" onchange="toggleOtherType(this,'${inputId}')">
+            ${TYPE_OPTIONS.map(t => `<option value="${t === 'Other…' ? '' : t}">${t}</option>`).join('')}
+        </select>
+        <input type="text" id="${inputId}" name="${selectName}_other" class="text-input type-other-input"
+               placeholder="e.g. VARCHAR(50), JSONB…" style="display:none;">
+    </div>`;
+}
+
+function toggleOtherType(sel, inputId) {
+    const inp = document.getElementById(inputId);
+    if (sel.value === '') {
+        inp.style.display = 'block';
+        inp.required = true;
+        inp.focus();
+    } else {
+        inp.style.display = 'none';
+        inp.required = false;
+        inp.value = '';
+    }
+}
+
+// ── Dynamic column rows (Create Table) ───────────────────────────────────────
+let colIndex = 1;
+function addColRow() {
+    const container = document.getElementById('col-rows');
+    const div = document.createElement('div');
+    div.className = 'col-row';
+    const typeId = `ct-${colIndex}`;
+    div.innerHTML = `
+        <input type="text" name="col_name" class="text-input" placeholder="Column name" required>
+        ${makeTypeSelect('col_type', typeId)}
+        <label class="checkbox-label"><input type="checkbox" name="col_nullable" value="${colIndex}" checked> Nullable</label>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="removeColRow(this)"><i data-lucide="x"></i></button>
+    `;
+    container.appendChild(div);
+    colIndex++;
+    refreshIcons();
+}
+function removeColRow(btn) {
+    if (document.querySelectorAll('.col-row').length > 1) btn.closest('.col-row').remove();
+}
+
+// ── Load table selects via AJAX ───────────────────────────────────────────────
+async function loadTables(db, selectEl) {
+    const res = await fetch(`/api/tables/${db}`);
+    const data = await res.json();
+    selectEl.innerHTML = '<option value="">— select table —</option>' +
+        (data.tables || []).map(t => `<option value="${t}">${t}</option>`).join('');
+}
+
+async function loadColumns(tableSelect, targetId) {
+    const table = tableSelect.value;
+    const target = document.getElementById(targetId);
+    if (!table) { target.innerHTML = '<option value="">— select table first —</option>'; return; }
+    const res = await fetch(`/api/columns/${SELECTED_DB}/${table}`);
+    const data = await res.json();
+    target.innerHTML = '<option value="">— select column —</option>' +
+        (data.columns || []).map(c => `<option value="${c}">${c}</option>`).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.table-select').forEach(sel => loadTables(SELECTED_DB, sel));
+    document.querySelectorAll('.db-field').forEach(f => f.value = SELECTED_DB);
+    // Replace static type selects rendered via macro with JS-built ones
+    document.querySelectorAll('[data-type-select]').forEach(el => {
+        const name = el.dataset.name;
+        const id   = el.dataset.id;
+        el.outerHTML = makeTypeSelect(name, id);
+    });
+    lucide.createIcons();
+});
+function refreshIcons() {
+  lucide.createIcons({
+    attrs: {
+      width: '1em',
+      height: '1em'
+    }
+  });
+}
+</script>
+</body>
+</html>

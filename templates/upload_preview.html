@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Preview – DB Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<nav class="navbar">
+    <span class="nav-brand">🗄️ DB Manager</span>
+    <div class="nav-links">
+        <a href="/browse" class="nav-link active">Browse</a>
+        <a href="/operations" class="nav-link">Operations</a>
+    </div>
+</nav>
+<div class="main" style="padding:32px 40px; max-width:960px;">
+    <h2 style="margin-bottom:6px;">Upload Preview</h2>
+    <p class="muted" style="margin-bottom:24px;">
+        Uploading <strong>{{ total }}</strong> rows into <strong>{{ table }}</strong>.
+        Showing first 5 rows. Confirm to append all rows.
+    </p>
+
+    <div class="table-wrapper" style="margin-bottom:24px;">
+        <table class="data-table">
+            <thead>
+                <tr>{% for h in headers %}<th>{{ h }}</th>{% endfor %}</tr>
+            </thead>
+            <tbody>
+                {% for row in preview_rows %}
+                <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if total > 5 %}
+        <p class="muted" style="margin-bottom:20px;">… and {{ total - 5 }} more rows</p>
+    {% endif %}
+
+    <form method="post" action="/upload-confirm/{{ selected_db }}/{{ table }}">
+        <!-- Data stored as base64 to survive HTML attribute escaping safely -->
+        <input type="hidden" name="headers_b64" value="{{ headers_b64 }}">
+        <input type="hidden" name="rows_b64" value="{{ rows_b64 }}">
+        <div style="display:flex;gap:10px;">
+            <button type="submit" class="btn btn-success">✅ Confirm — Insert {{ total }} rows</button>
+            <a href="/browse/{{ selected_db }}/{{ table }}" class="btn btn-ghost">Cancel</a>
+        </div>
+    </form>
+</div>
+</body>
+</html>
