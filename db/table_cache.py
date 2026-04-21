@@ -1,5 +1,22 @@
 from datetime import datetime
 
+"""
+Two-tier caching strategy
+─────────────────────────
+Small tables (≤ CACHE_ROW_THRESHOLD rows) are loaded entirely into this
+in-memory dict on first access. Subsequent requests — including filter,
+sort, and paginate — are served entirely from Python with no DB round trip.
+
+Large tables are never cached here; they use keyset pagination and hit
+the DB on every request. The threshold is checked in api.py before any
+cache interaction.
+
+After any write (insert/update/delete), _post_write_cache() invalidates
+and immediately reloads the cache so the UI reflects the change without
+a manual refresh. For large tables it only invalidates — the next page
+request will re-query the DB directly.
+"""
+
 _cache: dict[tuple, dict] = {}
 
 

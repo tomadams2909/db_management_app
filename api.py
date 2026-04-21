@@ -166,7 +166,15 @@ class DatabaseAPI:
         return result
 
     def _post_write_cache(self, database: Database, table: str) -> None:
-        """After any write, invalidate and re-fetch cache if table is small enough."""
+        """Invalidate-then-reload pattern after any write operation.
+
+        Invalidates the row count cache first so the threshold check uses the
+        updated count. For small tables the cache is immediately reloaded so
+        subsequent reads are still served from memory without a page refresh.
+        For large tables we only invalidate — the next keyset page request
+        will hit the DB directly, avoiding loading tens of thousands of rows
+        into memory on every write.
+        """
         invalidate_row_count_cache(database.url, table)
         total = get_row_count(database.url, table)
         if total <= CACHE_ROW_THRESHOLD:

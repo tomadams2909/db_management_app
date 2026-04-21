@@ -224,12 +224,28 @@ def get_rows_keyset(
     sort_col: str = None,
     sort_dir: str = "asc",
 ) -> tuple[list[str], list[dict], list[str], bool, str | None, str | None]:
-    """
-    Keyset pagination for large tables (> CACHE_ROW_THRESHOLD rows).
+    """Bidirectional keyset (cursor) pagination for large tables.
+
+    Why keyset instead of OFFSET?
+    OFFSET pagination requires the DB to scan and discard all preceding rows
+    on every request — O(n) cost that gets slower as you page deeper.
+    Keyset pagination uses a WHERE clause on an indexed PK column, so every
+    page is O(1) regardless of position.
+
+    Bidirectional navigation:
+    - direction="next": WHERE pk > last_pk ORDER BY pk ASC  — moves forward
+    - direction="prev": WHERE pk < last_pk ORDER BY pk DESC — moves backward,
+      then the result is reversed in Python so rows always display in ascending
+      order regardless of which direction was travelled.
+
+    has_more sentinel trick:
+    We request page_size + 1 rows. If we get more than page_size back, there
+    is at least one more page in the current direction — we slice off the
+    extra row before returning. This avoids a separate COUNT query.
+
     Returns (columns, rows, bytea_cols, has_more, first_pk, last_pk).
-    - has_more: True if there are more rows in the current direction
-    - first_pk: pk value of first row returned (for Prev navigation)
-    - last_pk: pk value of last row returned (for Next navigation)
+    first_pk and last_pk are handed back to the UI to use as cursor values
+    for the next Prev/Next request.
     """
     engine = get_engine(db_conn_string)
 
