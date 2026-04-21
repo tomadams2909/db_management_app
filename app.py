@@ -555,14 +555,21 @@ def health():
     from db.utils import get_engine
     statuses = {}
     for db in Database:
+        engine = get_engine(db.url)
         try:
-            with get_engine(db.url).connect() as conn:
+            with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            statuses[db.name] = "ok"
+            pool = engine.pool
+            statuses[db.name] = {
+                "status": "ok",
+                "pool_size": pool.size(),
+                "checked_out": pool.checkedout(),
+                "overflow": pool.overflow(),
+            }
         except Exception as e:
-            statuses[db.name] = f"unreachable: {e}"
+            statuses[db.name] = {"status": f"unreachable: {e}"}
 
-    all_ok = all(v == "ok" for v in statuses.values())
+    all_ok = all(v["status"] == "ok" for v in statuses.values())
     return jsonify({"status": "ok" if all_ok else "degraded", "databases": statuses}), 200 if all_ok else 503
 
 
@@ -582,5 +589,24 @@ def internal_error(_e):
     return jsonify({"error": "An internal server error occurred."}), 500
 
 
+def _check_db_connections() -> None:
+    """Verify DB connectivity on startup — fail fast with a clear error rather than
+    mysterious 500s on first request."""
+    from sqlalchemy import text
+    from db.utils import get_engine
+    reachable = 0
+    for db in Database:
+        try:
+            with get_engine(db.url).connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("DB connection OK: %s", db.name)
+            reachable += 1
+        except Exception as e:
+            logger.warning("DB connection FAILED: %s — %s", db.name, e)
+    if reachable == 0:
+        raise RuntimeError("No databases reachable on startup — check your .env DB URLs")
+
+
 if __name__ == "__main__":
+    _check_db_connections()
     app.run(debug=True)
