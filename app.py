@@ -173,10 +173,13 @@ def refresh_cache(db_name, table):
 def update_value():
     try:
         database = get_db(request.form["database"])
-        db_api.update_value(database=database, table=request.form["table"],
-                            row_id=int(request.form["row_id"]),
+        table    = request.form["table"]
+        pk_col   = session.get(f"pk_col_{request.form['database']}_{table}", "id")
+        db_api.update_value(database=database, table=table,
+                            row_id=request.form["row_id"],
                             column=request.form["column"],
-                            new_value=request.form["new_value"])
+                            new_value=request.form["new_value"],
+                            pk_col=pk_col)
         msg, msg_type = "✅ Cell updated successfully", "ok"
     except Exception as e:
         msg, msg_type = f"❌ {e}", "err"
@@ -195,8 +198,11 @@ def update_value():
 def delete_row_route():
     try:
         database = get_db(request.form["database"])
-        db_api.delete_row(database=database, table=request.form["table"],
-                          row_id=int(request.form["row_id"]))
+        table    = request.form["table"]
+        pk_col   = session.get(f"pk_col_{request.form['database']}_{table}", "id")
+        db_api.delete_row(database=database, table=table,
+                          row_id=request.form["row_id"],
+                          pk_col=pk_col)
         msg, msg_type = "✅ Row deleted", "ok"
     except Exception as e:
         msg, msg_type = f"❌ {e}", "err"

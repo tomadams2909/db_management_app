@@ -146,12 +146,12 @@ class DatabaseAPI:
 
     # ── Row Write ─────────────────────────────────────────────────────────────
 
-    def update_value(self, database: Database, table: str, row_id: int, column: str, new_value):
-        update_table_value(database.url, table, row_id, column, new_value)
+    def update_value(self, database: Database, table: str, row_id, column: str, new_value, pk_col: str = "id"):
+        update_table_value(database.url, table, row_id, column, new_value, pk_col=pk_col)
         self._post_write_cache(database, table)
 
-    def delete_row(self, database: Database, table: str, row_id: int):
-        result = delete_row(database.url, table, row_id)
+    def delete_row(self, database: Database, table: str, row_id, pk_col: str = "id"):
+        result = delete_row(database.url, table, row_id, pk_col=pk_col)
         self._post_write_cache(database, table)
         return result
 

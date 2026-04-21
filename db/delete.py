@@ -4,17 +4,19 @@ from .utils import get_engine, validate_identifier
 def delete_row(
     db_conn_string: str,
     table: str,
-    row_id: int
+    row_id,
+    pk_col: str = "id",
 ) -> int:
     engine = get_engine(db_conn_string)
-    safe_table = validate_identifier(table)
+    safe_table  = validate_identifier(table)
+    safe_pk_col = validate_identifier(pk_col)
 
     query = text(f"""
         DELETE FROM "{safe_table}"
-        WHERE id = :id
+        WHERE "{safe_pk_col}" = :pk_val
     """)
 
     with engine.begin() as conn:
-        result = conn.execute(query, {"id": row_id})
+        result = conn.execute(query, {"pk_val": row_id})
 
     return result.rowcount

@@ -48,18 +48,18 @@ class TestCRUD:
 
     def test_update_value(self, db_url, test_table):
         row_id = all_rows(db_url, test_table)[0]["id"]
-        update_value(db_url, test_table, row_id, "name", "Alice Updated")
+        update_value(db_url, test_table, row_id, "name", "Alice Updated", pk_col="id")
         rows = all_rows(db_url, test_table)
         assert rows[0]["name"] == "Alice Updated"
 
     def test_update_returns_rowcount(self, db_url, test_table):
         row_id = all_rows(db_url, test_table)[0]["id"]
-        affected = update_value(db_url, test_table, row_id, "score", 99)
+        affected = update_value(db_url, test_table, row_id, "score", 99, pk_col="id")
         assert affected == 1
 
     def test_delete_row(self, db_url, test_table):
         row_id = all_rows(db_url, test_table)[0]["id"]
-        delete_row(db_url, test_table, row_id)
+        delete_row(db_url, test_table, row_id, pk_col="id")
         assert fresh_count(db_url, test_table) == 0
 
 
