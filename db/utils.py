@@ -146,6 +146,6 @@ def validate_row_data(columns: list[dict], form_data: dict) -> dict:
             raise ValueError(f"Unsupported SQL type: {sql_type}")
         try:
             validated[name] = caster(value)
-        except Exception:
-            raise ValueError(f"Invalid value for {name} ({sql_type})")
+        except Exception as exc:
+            raise ValueError(f"Invalid value for {name} ({sql_type})") from exc
     return validated

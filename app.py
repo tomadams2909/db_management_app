@@ -32,6 +32,7 @@ def get_tables_safe(database):
     try:
         return db_api.list_tables(database)
     except Exception:
+        logger.exception("Failed to list tables for database %s", database.name)
         return []
 
 
@@ -128,6 +129,7 @@ def browse_table(db_name, table):
     try:
         data = future_data.result()
     except Exception as e:
+        logger.exception("Failed to load table data for %s/%s", db_name, table)
         error = str(e)
     t3 = time.time()
     logger.debug(
@@ -168,6 +170,7 @@ def refresh_cache(db_name, table):
         database = get_db(db_name)
         db_api.refresh_table_cache(database, table)
     except Exception as e:
+        logger.exception("Cache refresh failed for %s/%s", db_name, table)
         return redirect(url_for("browse_table", db_name=db_name, table=table,
                                 msg=f"❌ Refresh failed: {e}", msg_type="err"))
     return redirect(url_for("browse_table", db_name=db_name, table=table,
@@ -189,6 +192,7 @@ def update_value():
                             pk_col=pk_col)
         msg, msg_type = "✅ Cell updated successfully", "ok"
     except Exception as e:
+        logger.exception("Failed to update value in %s/%s", request.form.get("database"), table)
         msg, msg_type = f"❌ {e}", "err"
 
     return redirect(url_for("browse_table", db_name=request.form["redirect_db"],
@@ -212,6 +216,7 @@ def delete_row_route():
                           pk_col=pk_col)
         msg, msg_type = "✅ Row deleted", "ok"
     except Exception as e:
+        logger.exception("Failed to delete row from %s/%s", request.form.get("database"), table)
         msg, msg_type = f"❌ {e}", "err"
 
     return redirect(url_for("browse_table", db_name=request.form["redirect_db"],
@@ -235,6 +240,7 @@ def add_row_route():
         db_api.add_row(database=database, table=table, form_data=form_data)
         msg, msg_type = "✅ Row added successfully", "ok"
     except Exception as e:
+        logger.exception("Failed to add row to %s/%s", request.form.get("database"), table)
         msg, msg_type = f"❌ {e}", "err"
 
     return redirect(url_for("browse_table", db_name=request.form["redirect_db"],
@@ -262,6 +268,7 @@ def download_blob(db_name, table, pk_col, pk_val, column):
             download_name=f"{table}_{column}_{pk_val}.{extension}"
         )
     except Exception as e:
+        logger.exception("Blob download failed for %s/%s col=%s pk=%s", db_name, table, column, pk_val)
         return str(e), 500
 
 
@@ -281,6 +288,7 @@ def export_table(db_name, table, fmt):
                              mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              as_attachment=True, download_name=f"{table}.xlsx")
     except Exception as e:
+        logger.exception("Export failed for %s/%s fmt=%s", db_name, table, fmt)
         return redirect(url_for("browse_table", db_name=db_name, table=table,
                                 msg=f"❌ Export failed: {e}", msg_type="err"))
 
@@ -304,6 +312,7 @@ def upload_table(db_name, table):
                                table=table, headers=headers, preview_rows=preview_rows,
                                rows_b64=rows_b64, headers_b64=headers_b64, total=len(rows))
     except Exception as e:
+        logger.exception("Upload parse failed for %s/%s", db_name, table)
         return redirect(url_for("browse_table", db_name=db_name, table=table,
                                 msg=f"❌ Upload parse failed: {e}", msg_type="err"))
 
@@ -323,6 +332,7 @@ def upload_confirm(db_name, table):
             "ok",
         )
     except Exception as e:
+        logger.exception("Bulk insert failed for %s/%s", db_name, table)
         msg, msg_type = f"❌ Upload failed: {e}", "err"
 
     return redirect(url_for("browse_table", db_name=db_name, table=table,
@@ -346,6 +356,7 @@ def api_tables(db_name):
         tables = db_api.list_tables(database)
         return jsonify({"tables": tables})
     except Exception as e:
+        logger.exception("API tables request failed for %s", db_name)
         return jsonify({"error": str(e)}), 400
 
 
@@ -356,6 +367,7 @@ def api_columns(db_name, table):
         cols = db_api.get_table_columns(database, table)
         return jsonify({"columns": [c["column_name"] for c in cols]})
     except Exception as e:
+        logger.exception("API columns request failed for %s/%s", db_name, table)
         return jsonify({"error": str(e)}), 400
 
 
@@ -377,6 +389,7 @@ def ops_create_table():
                             pk_custom_type=pk_custom_type)
         msg, msg_type = f"✅ Table '{table}' created successfully", "ok"
     except Exception as e:
+        logger.exception("Failed to create table %s", request.form.get("table_name"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -392,6 +405,7 @@ def ops_drop_table():
         db_api.drop_table(database=database, table=table)
         msg, msg_type = f"✅ Table '{table}' dropped", "ok"
     except Exception as e:
+        logger.exception("Failed to drop table %s", request.form.get("table"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -407,6 +421,7 @@ def ops_add_column():
                           nullable=request.form.get("nullable") == "yes")
         msg, msg_type = f"✅ Column '{request.form['column_name']}' added", "ok"
     except Exception as e:
+        logger.exception("Failed to add column to %s", request.form.get("table"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -420,6 +435,7 @@ def ops_drop_column():
                            column=request.form["column"])
         msg, msg_type = f"✅ Column '{request.form['column']}' dropped", "ok"
     except Exception as e:
+        logger.exception("Failed to drop column %s from %s", request.form.get("column"), request.form.get("table"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -434,6 +450,7 @@ def ops_rename_column():
                              new_name=request.form["new_column_name"])
         msg, msg_type = f"✅ Column renamed to '{request.form['new_column_name']}'", "ok"
     except Exception as e:
+        logger.exception("Failed to rename column in %s", request.form.get("table"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -448,6 +465,7 @@ def ops_change_column_type():
                                   column=request.form["column"], new_type=new_type)
         msg, msg_type = f"✅ Column type changed to '{new_type}'", "ok"
     except Exception as e:
+        logger.exception("Failed to change column type in %s", request.form.get("table"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -463,6 +481,7 @@ def ops_clear_table():
         count = db_api.clear_table(database=database, table=table)
         msg, msg_type = f"✅ Cleared {count} rows from '{table}' (schema preserved)", "ok"
     except Exception as e:
+        logger.exception("Failed to clear table %s", request.form.get("table"))
         msg, msg_type = f"❌ {e}", "err"
     return redirect(url_for("operations", database=request.form.get("database"),
                             msg=msg, msg_type=msg_type))
@@ -479,6 +498,7 @@ def ops_execute_sql():
             database = get_db(db_name)
             result = db_api.execute_sql(database=database, sql=sql)
         except Exception as e:
+            logger.warning("SQL execution error on %s: %s", db_name, e)
             error = str(e)
     dbs = db_names()
     return render_template("operations.html", db_names=dbs, selected_db=db_name,
