@@ -7,6 +7,7 @@ import io
 import json
 import base64
 import logging
+from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(
@@ -22,6 +23,19 @@ app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload cap
 db_api = DatabaseAPI()
 PAGE_SIZE = 100
 ALLOWED_UPLOAD_EXTENSIONS = {".csv", ".xlsx"}
+_API_TOKEN = get_env("API_TOKEN")
+
+
+def require_auth(f):
+    """Protect a route with Bearer token auth. Returns 401 if token is missing or wrong."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer ") or auth[len("Bearer "):] != _API_TOKEN:
+            logger.warning("Unauthorised request to %s from %s", request.path, request.remote_addr)
+            return jsonify({"error": "Unauthorised"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 
 def get_db(name: str) -> Database:
@@ -182,6 +196,7 @@ def refresh_cache(db_name, table):
 # ── Row operations ────────────────────────────────────────────────────────────
 
 @app.route("/update-value", methods=["POST"])
+@require_auth
 def update_value():
     try:
         database = get_db(request.form["database"])
@@ -208,6 +223,7 @@ def update_value():
 
 
 @app.route("/delete-row", methods=["POST"])
+@require_auth
 def delete_row_route():
     try:
         database = get_db(request.form["database"])
@@ -228,6 +244,7 @@ def delete_row_route():
 
 
 @app.route("/add-row", methods=["POST"])
+@require_auth
 def add_row_route():
     try:
         database = get_db(request.form["database"])
@@ -298,6 +315,7 @@ def export_table(db_name, table, fmt):
 # ── Upload ────────────────────────────────────────────────────────────────────
 
 @app.route("/upload/<db_name>/<table>", methods=["POST"])
+@require_auth
 def upload_table(db_name, table):
     database = get_db(db_name)
     file = request.files.get("upload_file")
@@ -324,6 +342,7 @@ def upload_table(db_name, table):
 
 
 @app.route("/upload-confirm/<db_name>/<table>", methods=["POST"])
+@require_auth
 def upload_confirm(db_name, table):
     database = get_db(db_name)
     try:
@@ -378,6 +397,7 @@ def api_columns(db_name, table):
 
 
 @app.route("/ops/create-table", methods=["POST"])
+@require_auth
 def ops_create_table():
     try:
         database = get_db(request.form["database"])
@@ -402,6 +422,7 @@ def ops_create_table():
 
 
 @app.route("/ops/drop-table", methods=["POST"])
+@require_auth
 def ops_drop_table():
     try:
         database = get_db(request.form["database"])
@@ -418,6 +439,7 @@ def ops_drop_table():
 
 
 @app.route("/ops/add-column", methods=["POST"])
+@require_auth
 def ops_add_column():
     try:
         database = get_db(request.form["database"])
@@ -434,6 +456,7 @@ def ops_add_column():
 
 
 @app.route("/ops/drop-column", methods=["POST"])
+@require_auth
 def ops_drop_column():
     try:
         database = get_db(request.form["database"])
@@ -448,6 +471,7 @@ def ops_drop_column():
 
 
 @app.route("/ops/rename-column", methods=["POST"])
+@require_auth
 def ops_rename_column():
     try:
         database = get_db(request.form["database"])
@@ -463,6 +487,7 @@ def ops_rename_column():
 
 
 @app.route("/ops/change-column-type", methods=["POST"])
+@require_auth
 def ops_change_column_type():
     try:
         database = get_db(request.form["database"])
@@ -478,6 +503,7 @@ def ops_change_column_type():
 
 
 @app.route("/ops/clear-table", methods=["POST"])
+@require_auth
 def ops_clear_table():
     try:
         database = get_db(request.form["database"])
@@ -494,6 +520,7 @@ def ops_clear_table():
 
 
 @app.route("/ops/execute-sql", methods=["POST"])
+@require_auth
 def ops_execute_sql():
     db_name = request.form.get("database")
     sql     = request.form.get("sql", "").strip()
