@@ -6,7 +6,14 @@ from db import EXCEL_ROW_LIMIT, get_blob, invalidate_table_cache
 import io
 import json
 import base64
+import logging
 from concurrent.futures import ThreadPoolExecutor
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="style", static_url_path="/static")
 app.secret_key = get_env("FLASK_SECRET_KEY")
@@ -91,7 +98,7 @@ def browse_table(db_name, table):
 
         table_cols = future_cols.result()
         t1 = time.time()
-        print(f"[TIMING] get_table_columns: {t1-t0:.3f}s")
+        logger.debug("TIMING get_table_columns: %.3fs", t1 - t0)
         session_key = f"pk_col_{db_name}_{table}"
         all_col_names = [c["column_name"] for c in table_cols]
 
@@ -115,7 +122,7 @@ def browse_table(db_name, table):
         )
         tables = future_tables.result()
         t2 = time.time()
-        print(f"[TIMING] get_tables (parallel): {t2-t0:.3f}s")
+        logger.debug("TIMING get_tables (parallel): %.3fs", t2 - t0)
 
     data, error = {}, None
     try:
@@ -123,10 +130,10 @@ def browse_table(db_name, table):
     except Exception as e:
         error = str(e)
     t3 = time.time()
-    print(f"[TIMING] browse_table data: {t3-t2:.3f}s")
-    print(f"[TIMING] is_cached={data.get('is_cached')} | is_large={data.get('is_large')}")
-    print(f"[TIMING] total: {t3-t0:.3f}s")
-    print(f"---")
+    logger.debug(
+        "TIMING browse_table data: %.3fs | is_cached=%s | is_large=%s | total: %.3fs",
+        t3 - t2, data.get("is_cached"), data.get("is_large"), t3 - t0,
+    )
 
     flash_msg  = request.args.get("msg")
     flash_type = request.args.get("msg_type", "ok")

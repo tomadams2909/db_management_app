@@ -1,3 +1,7 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
 from db import (
     update_table_value, delete_row, add_row, validate_row_data, get_table_columns,
     get_tables, get_rows, get_row_count, get_column_types,
@@ -92,11 +96,10 @@ class DatabaseAPI:
         # ── Small table: populate cache if needed ─────────────────────────────
         if not is_cached(database.url, table):
             all_columns, all_rows = fetch_all_rows(database.url, table, col_types)
-            print(f"[CACHE] fetch_all_rows returned {len(all_rows) if all_rows is not None else 'None'} rows")
+            logger.debug("CACHE fetch_all_rows returned %d rows", len(all_rows) if all_rows is not None else 0)
             store_cache(database.url, table, all_rows or [], col_types)
 
         cached = get_cached(database.url, table)
-        print(f"[CACHE] get_cached returned keys={list(cached.keys()) if cached else None}, rows={len(cached['rows']) if cached and cached.get('rows') is not None else 'None'}")
         all_rows = cached["rows"] if cached else []
         cached_at = cached.get("cached_at", "") if cached else ""
 
