@@ -9,6 +9,7 @@ import io
 import json
 import base64
 import logging
+import time
 from functools import wraps
 from concurrent.futures import ThreadPoolExecutor
 
@@ -40,6 +41,19 @@ def require_auth(f):
             return jsonify({"error": "Unauthorised"}), 401
         return f(*args, **kwargs)
     return decorated
+
+
+# ── Request logging middleware ────────────────────────────────────────────────
+
+@app.before_request
+def _before_request():
+    request._start_time = time.perf_counter()
+
+@app.after_request
+def _after_request(response):
+    duration_ms = (time.perf_counter() - request._start_time) * 1000
+    logger.info("%s %s %s %.1fms", request.method, request.path, response.status_code, duration_ms)
+    return response
 
 
 def get_db(name: str) -> Database:
