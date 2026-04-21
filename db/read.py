@@ -32,8 +32,10 @@ def get_tables(db_conn_string: str) -> list[str]:
 
 def get_db_overview(db_conn_string: str) -> dict:
     """
-    Single query that returns per-table stats AND database-level stats.
-    Uses pg_stat_user_tables + pg_total_relation_size — one round trip total.
+    Returns per-table stats AND database-level stats.
+    Size and column counts come from a single metadata query.
+    Row counts use COUNT(*) via get_row_count_cached — accurate regardless of
+    whether PostgreSQL statistics (n_live_tup) have been updated by ANALYZE.
     Returns:
       {
         "tables": [{"table", "rows", "size_bytes", "size_pretty", "col_count"}, ...],
@@ -49,7 +51,6 @@ def get_db_overview(db_conn_string: str) -> dict:
     query = text("""
         SELECT
             t.table_name,
-            COALESCE(s.n_live_tup, 0)                        AS row_estimate,
             pg_total_relation_size(
                 (quote_ident(t.table_schema) || '.' || quote_ident(t.table_name))::regclass
             )                                                  AS size_bytes,
@@ -60,15 +61,12 @@ def get_db_overview(db_conn_string: str) -> dict:
             )                                                  AS size_pretty,
             COUNT(c.column_name)                               AS col_count
         FROM information_schema.tables t
-        LEFT JOIN pg_stat_user_tables s
-               ON s.schemaname = t.table_schema
-              AND s.relname    = t.table_name
         LEFT JOIN information_schema.columns c
                ON c.table_schema = t.table_schema
               AND c.table_name   = t.table_name
         WHERE t.table_schema = 'public'
           AND t.table_type   = 'BASE TABLE'
-        GROUP BY t.table_name, t.table_schema, s.n_live_tup
+        GROUP BY t.table_name, t.table_schema
         ORDER BY t.table_name
     """)
 
@@ -79,22 +77,22 @@ def get_db_overview(db_conn_string: str) -> dict:
     """)
 
     with engine.connect() as conn:
-        rows      = conn.execute(query).fetchall()
-        db_size   = conn.execute(db_size_query).fetchone()
+        rows    = conn.execute(query).fetchall()
+        db_size = conn.execute(db_size_query).fetchone()
 
     tables = [
         {
             "table":       r[0],
-            "rows":        int(r[1]),
-            "size_bytes":  int(r[2]),
-            "size_pretty": r[3],
-            "col_count":   int(r[4]),
+            "rows":        get_row_count_cached(db_conn_string, r[0]),
+            "size_bytes":  int(r[1]),
+            "size_pretty": r[2],
+            "col_count":   int(r[3]),
         }
         for r in rows
     ]
 
     return {
-        "tables":        tables,
+        "tables":         tables,
         "db_size_pretty": db_size[1] if db_size else "—",
         "db_size_bytes":  int(db_size[0]) if db_size else 0,
         "total_rows":     sum(t["rows"] for t in tables),
