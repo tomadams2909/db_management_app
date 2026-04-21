@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
 from api import DatabaseAPI
 from config.databases import Database
+from config.settings import get_env
 from db import EXCEL_ROW_LIMIT, get_blob, invalidate_table_cache
 import io
 import json
@@ -8,7 +9,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 
 app = Flask(__name__, static_folder="style", static_url_path="/static")
-app.secret_key = "FD465F876G87H9JP0KD327Y8UIN"
+app.secret_key = get_env("FLASK_SECRET_KEY")
 
 db_api = DatabaseAPI()
 PAGE_SIZE = 100
