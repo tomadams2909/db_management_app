@@ -17,9 +17,11 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder="style", static_url_path="/static")
 app.secret_key = get_env("FLASK_SECRET_KEY")
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload cap
 
 db_api = DatabaseAPI()
 PAGE_SIZE = 100
+ALLOWED_UPLOAD_EXTENSIONS = {".csv", ".xlsx"}
 
 
 def get_db(name: str) -> Database:
@@ -302,6 +304,10 @@ def upload_table(db_name, table):
     if not file or file.filename == "":
         return redirect(url_for("browse_table", db_name=db_name, table=table,
                                 msg="❌ No file selected", msg_type="err"))
+    ext = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        return redirect(url_for("browse_table", db_name=db_name, table=table,
+                                msg="❌ Only .csv and .xlsx files are supported", msg_type="err"))
     try:
         file_bytes = file.read()
         headers, rows = db_api.parse_upload(file_bytes, file.filename)
@@ -504,6 +510,22 @@ def ops_execute_sql():
     return render_template("operations.html", db_names=dbs, selected_db=db_name,
                            sql_result=result, sql_error=error, sql_query=sql,
                            open_card="execute-sql")
+
+
+# ── Error handlers ────────────────────────────────────────────────────────────
+
+@app.errorhandler(413)
+def request_entity_too_large(_e):
+    return jsonify({"error": "File too large. Maximum upload size is 50 MB."}), 413
+
+@app.errorhandler(404)
+def not_found(_e):
+    return jsonify({"error": "Resource not found."}), 404
+
+@app.errorhandler(500)
+def internal_error(_e):
+    logger.exception("Unhandled 500 error")
+    return jsonify({"error": "An internal server error occurred."}), 500
 
 
 if __name__ == "__main__":
