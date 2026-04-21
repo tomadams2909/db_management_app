@@ -1,4 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, send_file, jsonify, session
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from api import DatabaseAPI
 from config.databases import Database
 from config.settings import get_env
@@ -19,6 +21,8 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder="style", static_url_path="/static")
 app.secret_key = get_env("FLASK_SECRET_KEY")
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB upload cap
+
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 db_api = DatabaseAPI()
 PAGE_SIZE = 100
@@ -294,6 +298,7 @@ def download_blob(db_name, table, pk_col, pk_val, column):
 # ── Export ────────────────────────────────────────────────────────────────────
 
 @app.route("/export/<db_name>/<table>/<fmt>")
+@limiter.limit("10 per minute")
 def export_table(db_name, table, fmt):
     database = get_db(db_name)
     try:
@@ -423,6 +428,7 @@ def ops_create_table():
 
 @app.route("/ops/drop-table", methods=["POST"])
 @require_auth
+@limiter.limit("5 per minute")
 def ops_drop_table():
     try:
         database = get_db(request.form["database"])
@@ -504,6 +510,7 @@ def ops_change_column_type():
 
 @app.route("/ops/clear-table", methods=["POST"])
 @require_auth
+@limiter.limit("5 per minute")
 def ops_clear_table():
     try:
         database = get_db(request.form["database"])
@@ -521,6 +528,7 @@ def ops_clear_table():
 
 @app.route("/ops/execute-sql", methods=["POST"])
 @require_auth
+@limiter.limit("30 per minute")
 def ops_execute_sql():
     db_name = request.form.get("database")
     sql     = request.form.get("sql", "").strip()
