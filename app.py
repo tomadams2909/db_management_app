@@ -658,4 +658,7 @@ def _check_db_connections() -> None:
 
 if __name__ == "__main__":
     _check_db_connections()
+    from seed import run as _seed
+    from config.databases import Database
+    _seed(Database.LOCAL.url)
     app.run(host="0.0.0.0", debug=True)
