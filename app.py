@@ -658,4 +658,4 @@ def _check_db_connections() -> None:
 
 if __name__ == "__main__":
     _check_db_connections()
-    app.run(debug=True)
+    app.run(host="0.0.0.0", debug=True)
