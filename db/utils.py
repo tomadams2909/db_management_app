@@ -140,6 +140,8 @@ def validate_row_data(columns: list[dict], form_data: dict) -> dict:
             if nullable:
                 validated[name] = None
                 continue
+            if col.get("column_default"):
+                continue  # let the DB use its default (e.g. serial/sequence)
             raise ValueError(f"{name} is required")
         caster = SQL_TYPE_MAP.get(sql_type)
         if not caster:
